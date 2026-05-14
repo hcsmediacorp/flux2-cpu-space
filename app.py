@@ -22,7 +22,11 @@ pipe = Flux2KleinPipeline.from_pretrained(
     tokenizer_2=tokenizer_2,
     torch_dtype=dtype,
 )
-pipe.enable_model_cpu_offload()
+try:
+    pipe.enable_model_cpu_offload()
+except Exception:
+    # Fallback for environments where accelerate hooks are unavailable.
+    pass
 pipe.vae.enable_tiling()
 pipe.vae.enable_slicing()
 
