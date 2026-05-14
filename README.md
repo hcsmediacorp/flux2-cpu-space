@@ -8,9 +8,11 @@ pinned: false
 app_port: 7860
 ---
 
-# Flux2 GGUF ComfyUI CPU Space
+# Flux2 GGUF Space
 
-This Space runs **ComfyUI** with **ComfyUI-GGUF** so the workflow can use quantized GGUF models directly instead of forcing a fragile Diffusers startup path.
+Dieses Projekt unterstützt jetzt zwei Backends:
+1) **ComfyUI + ComfyUI-GGUF** (bestehend)  
+2) **stable-diffusion.cpp (ggml/GGUF)** als primärer Inferenzpfad für GGUF-Dateien.
 
 ## Included
 
