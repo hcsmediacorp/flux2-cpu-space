@@ -8,7 +8,7 @@ dtype = torch.bfloat16
 
 pipe = Flux2KleinPipeline.from_pretrained(
     "unsloth/FLUX.2-klein-4B-GGUF",
-    gguf_file="flux-2-klein-4b-Q4_K_M.gguf",
+    gguf_file="flux-2-klein-4b-Q6_K.gguf",
     torch_dtype=dtype,
 )
 pipe.enable_model_cpu_offload()
