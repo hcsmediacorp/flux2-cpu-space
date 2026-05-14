@@ -5,9 +5,12 @@ import subprocess
 from pathlib import Path
 
 import gradio as gr
+from huggingface_hub import hf_hub_download
 
-SDCPP_BIN = os.getenv("SDCPP_BIN", "/app/stable-diffusion.cpp/build/bin/sd")
+SDCPP_BIN = os.getenv("SDCPP_BIN", "/usr/local/bin/sd")
 DIFFUSION_MODEL = os.getenv("FLUX_GGUF_MODEL", "/app/models/flux-2-klein-4b-Q4_K_M.gguf")
+MODEL_REPO = os.getenv("FLUX_GGUF_REPO", "unsloth/FLUX.2-klein-4B-GGUF")
+MODEL_FILE = os.getenv("FLUX_GGUF_FILE", "flux-2-klein-4b-Q4_K_M.gguf")
 CLIP_L = os.getenv("FLUX_CLIP_L", "")
 T5XXL = os.getenv("FLUX_T5XXL", "")
 VAE = os.getenv("FLUX_VAE", "")
@@ -15,21 +18,35 @@ OUT_DIR = Path(os.getenv("SDCPP_OUT_DIR", "/tmp/sdcpp-out"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def run_generate(prompt: str, negative: str, seed_mode: str, seed: int, steps: int, cfg: float, width: int, height: int, sampling: str):
+def ensure_model() -> Path:
+    target = Path(DIFFUSION_MODEL)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        return target
+    downloaded = Path(hf_hub_download(repo_id=MODEL_REPO, filename=MODEL_FILE))
+    if not target.exists():
+        try:
+            target.symlink_to(downloaded)
+        except OSError:
+            target.write_bytes(downloaded.read_bytes())
+    return target
+
+
+def run_generate(prompt: str, negative: str, reference_image: str | None, denoise: float, seed_mode: str, seed: int, steps: int, cfg: float, width: int, height: int, sampling: str):
     if not prompt.strip():
         raise gr.Error("Bitte Prompt eingeben.")
     if not Path(SDCPP_BIN).exists():
         raise gr.Error(f"stable-diffusion.cpp Binary nicht gefunden: {SDCPP_BIN}")
-    if not Path(DIFFUSION_MODEL).exists():
-        raise gr.Error(f"GGUF-Modell nicht gefunden: {DIFFUSION_MODEL}")
+
+    model_path = ensure_model()
 
     final_seed = random.randint(0, 2**32 - 1) if seed_mode == "Random" else int(seed)
     out_file = OUT_DIR / f"flux2_{final_seed}.png"
 
     cmd = [
         SDCPP_BIN,
-        "-M", "txt2img",
-        "--diffusion-model", DIFFUSION_MODEL,
+        "-M", "img2img" if reference_image else "txt2img",
+        "--diffusion-model", str(model_path),
         "--prompt", prompt,
         "--negative-prompt", negative or "",
         "--sampling-method", sampling,
@@ -40,6 +57,9 @@ def run_generate(prompt: str, negative: str, seed_mode: str, seed: int, steps: i
         "--seed", str(final_seed),
         "--output", str(out_file),
     ]
+
+    if reference_image:
+        cmd += ["--init-img", reference_image, "--strength", str(float(denoise))]
 
     if CLIP_L:
         cmd += ["--clip_l", CLIP_L]
@@ -64,11 +84,13 @@ def run_generate(prompt: str, negative: str, seed_mode: str, seed: int, steps: i
 
 with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft()) as demo:
     gr.Markdown("# FLUX.2 klein 4B (GGUF) • stable-diffusion.cpp")
-    gr.Markdown("Schneller GGUF-Run ohne ComfyUI-Abhängigkeit. Für reproduzierbare Ergebnisse: Seed Mode = Fixed.")
+    gr.Markdown("Auto-Modell-Download aktiv. Unterstützt txt2img + img2img (Referenzbild optional).")
 
     status = gr.Markdown("🟡 Bereit")
     prompt = gr.Textbox(label="Prompt", lines=4, value="cinematic portrait, ultra detailed, soft light")
     negative = gr.Textbox(label="Negative Prompt", lines=2, value="low quality, blurry, distorted")
+    reference = gr.Image(label="Referenzbild (optional für img2img)", type="filepath")
+    denoise = gr.Slider(0.1, 1.0, value=0.55, step=0.05, label="Denoise/Strength (img2img)")
 
     with gr.Row():
         seed_mode = gr.Radio(["Random", "Fixed"], value="Random", label="Seed Mode")
@@ -90,7 +112,7 @@ with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft
 
     run.click(
         run_generate,
-        inputs=[prompt, negative, seed_mode, seed, steps, cfg, width, height, sampling],
+        inputs=[prompt, negative, reference, denoise, seed_mode, seed, steps, cfg, width, height, sampling],
         outputs=[image, used_seed, cmdline, status],
     )
 
