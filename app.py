@@ -1,25 +1,15 @@
 import gradio as gr
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from diffusers import Flux2KleinPipeline
 
 
 device = "cpu"
 dtype = torch.bfloat16
 
-text_encoder_2 = AutoModelForCausalLM.from_pretrained(
-    "unsloth/Qwen3-4B-GGUF",
-    gguf_file="Qwen3-4B-Q8_0.gguf",
-    torch_dtype=dtype,
-)
-tokenizer_2 = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
-
 pipe = Flux2KleinPipeline.from_pretrained(
     "black-forest-labs/FLUX.2-klein-4B",
     gguf_repo_id="unsloth/FLUX.2-klein-4B-GGUF",
     gguf_file="flux-2-klein-4b-Q4_K_M.gguf",
-    text_encoder_2=text_encoder_2,
-    tokenizer_2=tokenizer_2,
     torch_dtype=dtype,
 )
 try:
