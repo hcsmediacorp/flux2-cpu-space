@@ -20,11 +20,13 @@ RUN pip install --upgrade pip \
     && pip install --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio \
     && pip install -r requirements.txt \
     && pip install -r custom_nodes/ComfyUI-GGUF/requirements.txt \
-    && pip install huggingface_hub gguf safetensors sentencepiece protobuf opencv-python-headless
+    && pip install gradio huggingface_hub gguf safetensors sentencepiece protobuf opencv-python-headless
 
+COPY app.py /app/app.py
 COPY comfyui_start.sh /app/comfyui_start.sh
 COPY comfyui_flux2_gguf_workflow.json /app/ComfyUI/user/default/workflows/flux2_gguf_img2img_seed_workflow.json
+COPY comfyui_flux2_gguf_api_workflow.json /app/ComfyUI/user/default/workflows/flux2_gguf_api_workflow.json
 RUN chmod +x /app/comfyui_start.sh
 
 EXPOSE 7860
-CMD ["/app/comfyui_start.sh"]
+CMD ["python", "/app/app.py"]
