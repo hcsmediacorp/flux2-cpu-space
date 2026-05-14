@@ -17,6 +17,12 @@ VAE = os.getenv("FLUX_VAE", "")
 OUT_DIR = Path(os.getenv("SDCPP_OUT_DIR", "/tmp/sdcpp-out"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+PRESETS = {
+    "Fast (CPU)": {"steps": 4, "cfg": 1.0, "width": 768, "height": 768},
+    "Balanced": {"steps": 8, "cfg": 1.0, "width": 1024, "height": 1024},
+    "Quality": {"steps": 16, "cfg": 1.0, "width": 1024, "height": 1024},
+}
+
 
 def ensure_model() -> Path:
     target = Path(DIFFUSION_MODEL)
@@ -30,6 +36,11 @@ def ensure_model() -> Path:
         except OSError:
             target.write_bytes(downloaded.read_bytes())
     return target
+
+
+def apply_preset(name: str):
+    p = PRESETS.get(name, PRESETS["Balanced"])
+    return p["steps"], p["cfg"], p["width"], p["height"]
 
 
 def run_generate(prompt: str, negative: str, reference_image: str | None, denoise: float, seed_mode: str, seed: int, steps: int, cfg: float, width: int, height: int, sampling: str):
@@ -60,7 +71,6 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, denois
 
     if reference_image:
         cmd += ["--init-img", reference_image, "--strength", str(float(denoise))]
-
     if CLIP_L:
         cmd += ["--clip_l", CLIP_L]
     if T5XXL:
@@ -79,31 +89,36 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, denois
     if not out_file.exists():
         raise gr.Error("Kein Output-Bild erzeugt.")
 
-    return str(out_file), final_seed, " ".join(shlex.quote(c) for c in cmd), "✅ Fertig"
+    mode = "img2img" if reference_image else "txt2img"
+    return str(out_file), final_seed, " ".join(shlex.quote(c) for c in cmd), f"✅ Fertig ({mode})"
 
 
 with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft()) as demo:
     gr.Markdown("# FLUX.2 klein 4B (GGUF) • stable-diffusion.cpp")
-    gr.Markdown("Auto-Modell-Download aktiv. Unterstützt txt2img + img2img (Referenzbild optional).")
+    gr.Markdown("Dokubasierte GUI: txt2img + img2img, Presets und Auto-Modell-Download.")
 
     status = gr.Markdown("🟡 Bereit")
     prompt = gr.Textbox(label="Prompt", lines=4, value="cinematic portrait, ultra detailed, soft light")
     negative = gr.Textbox(label="Negative Prompt", lines=2, value="low quality, blurry, distorted")
+
+    with gr.Row():
+        preset = gr.Dropdown(list(PRESETS.keys()), value="Balanced", label="Workflow Preset")
+        seed_mode = gr.Radio(["Random", "Fixed"], value="Random", label="Seed Mode")
+        seed = gr.Number(value=42, precision=0, label="Seed")
+
     reference = gr.Image(label="Referenzbild (optional für img2img)", type="filepath")
     denoise = gr.Slider(0.1, 1.0, value=0.55, step=0.05, label="Denoise/Strength (img2img)")
 
     with gr.Row():
-        seed_mode = gr.Radio(["Random", "Fixed"], value="Random", label="Seed Mode")
-        seed = gr.Number(value=42, precision=0, label="Seed")
+        steps = gr.Slider(1, 40, value=8, step=1, label="Steps")
+        cfg = gr.Slider(0.0, 12.0, value=1.0, step=0.1, label="CFG")
         sampling = gr.Dropdown(["euler", "heun", "dpm2", "dpm++2m"], value="euler", label="Sampler")
-
-    with gr.Row():
-        steps = gr.Slider(1, 40, value=20, step=1, label="Steps")
-        cfg = gr.Slider(0.0, 12.0, value=3.5, step=0.1, label="CFG")
 
     with gr.Row():
         width = gr.Slider(256, 1536, value=1024, step=64, label="Width")
         height = gr.Slider(256, 1536, value=1024, step=64, label="Height")
+
+    preset.change(apply_preset, inputs=[preset], outputs=[steps, cfg, width, height])
 
     run = gr.Button("Generate", variant="primary")
     image = gr.Image(label="Output")
