@@ -6,10 +6,9 @@ from diffusers import Flux2KleinPipeline
 device = "cpu"
 dtype = torch.bfloat16
 
-GGUF_URL = "https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q4_K_M.gguf"
-
-pipe = Flux2KleinPipeline.from_single_file(
-    GGUF_URL,
+pipe = Flux2KleinPipeline.from_pretrained(
+    "unsloth/FLUX.2-klein-4B-GGUF",
+    gguf_file="flux-2-klein-4b-Q4_K_M.gguf",
     torch_dtype=dtype,
 )
 pipe.enable_model_cpu_offload()
