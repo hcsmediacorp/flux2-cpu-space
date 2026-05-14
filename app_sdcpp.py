@@ -16,10 +16,16 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULTS = {"sampling": "euler", "steps": 4, "cfg": 1.0, "width": 1024, "height": 1024, "denoise": 0.55}
 
 
+def resolve_sd_bin() -> Path:
+    candidates = [Path(SDCPP_BIN), Path("/usr/local/bin/sd-cli"), Path("/usr/local/bin/sd")]
+    for c in candidates:
+        if c.exists():
+            return c
+    raise gr.Error("sd.cpp Binary nicht gefunden (erwartet z.B. /usr/local/bin/sd-cli)")
+
+
 def validate_runtime_assets() -> None:
     missing = []
-    if not Path(SDCPP_BIN).exists():
-        missing.append(f"sd binary: {SDCPP_BIN}")
     if not DIFFUSION_MODEL.exists():
         missing.append(f"diffusion model: {DIFFUSION_MODEL}")
     if not LLM_MODEL.exists():
@@ -30,16 +36,23 @@ def validate_runtime_assets() -> None:
         raise gr.Error("Fehlende Build-Artefakte:\n- " + "\n- ".join(missing))
 
 
+def _run_cmd(cmd: list[str]) -> tuple[int, str]:
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    return proc.returncode, (proc.stderr or proc.stdout or "")
+
+
 def run_generate(prompt: str, negative: str, reference_image: str | None, seed: int):
     if not prompt.strip():
         raise gr.Error("Bitte Prompt eingeben.")
 
+    sd_bin = resolve_sd_bin()
     validate_runtime_assets()
     final_seed = random.randint(0, 2**32 - 1) if seed == -1 else int(seed)
     out_file = OUT_DIR / f"flux2_{final_seed}.png"
 
-    cmd = [
-        SDCPP_BIN,
+    # Primary syntax
+    cmd_a = [
+        str(sd_bin),
         "-M", "img2img" if reference_image else "txt2img",
         "--diffusion-model", str(DIFFUSION_MODEL),
         "--llm", str(LLM_MODEL),
@@ -55,29 +68,48 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
         "--output", str(out_file),
         "--offload-to-cpu",
     ]
-
     if reference_image:
-        cmd += ["--init-img", reference_image, "--strength", str(DEFAULTS["denoise"])]
+        cmd_a += ["--init-img", reference_image, "--strength", str(DEFAULTS["denoise"])]
+
+    # Fallback syntax seen in sd.cpp docs
+    cmd_b = [
+        str(sd_bin),
+        "-M", "img2img" if reference_image else "txt2img",
+        "--diffusion-model", str(DIFFUSION_MODEL),
+        "--llm", str(LLM_MODEL),
+        "--vae", str(VAE_MODEL),
+        "-p", prompt,
+        "-n", negative or "",
+        "--sampling-method", DEFAULTS["sampling"],
+        "--steps", str(DEFAULTS["steps"]),
+        "--cfg-scale", str(DEFAULTS["cfg"]),
+        "--width", str(DEFAULTS["width"]),
+        "--height", str(DEFAULTS["height"]),
+        "--seed", str(final_seed),
+        "-o", str(out_file),
+        "--offload-to-cpu",
+    ]
+    if reference_image:
+        cmd_b += ["-r", reference_image, "--strength", str(DEFAULTS["denoise"])]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        rc, log = _run_cmd(cmd_a)
+        used = cmd_a
+        if rc != 0 or not out_file.exists():
+            rc, log2 = _run_cmd(cmd_b)
+            used = cmd_b
+            log = log + "\n--- fallback ---\n" + log2
+        if rc != 0 or not out_file.exists():
+            raise gr.Error("sd.cpp Fehler:\n" + log[-6000:])
     except subprocess.TimeoutExpired as exc:
         raise gr.Error("sd.cpp Timeout nach 15 Minuten. Bitte später erneut versuchen.") from exc
 
-    if proc.returncode != 0:
-        details = (proc.stderr or proc.stdout or "Unbekannter Fehler")[-5000:]
-        raise gr.Error("sd.cpp Fehler:\n" + details)
-    if not out_file.exists():
-        raise gr.Error("Kein Output-Bild erzeugt.")
-
     mode = "img2img" if reference_image else "txt2img"
-    return str(out_file), final_seed, " ".join(shlex.quote(c) for c in cmd), f"✅ Fertig ({mode})"
+    return str(out_file), final_seed, " ".join(shlex.quote(c) for c in used), f"✅ Fertig ({mode})"
 
 
 with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft()) as demo:
     gr.Markdown("# FLUX.2 klein 4B (GGUF) • SD.cpp CPU-only")
-    gr.Markdown("Einfacher Workflow: Prompt + optional Referenzbild (img2img).")
-
     status = gr.Markdown("🟡 Bereit")
     prompt = gr.Textbox(label="Prompt", lines=4, value="cinematic portrait, ultra detailed, soft light")
     negative = gr.Textbox(label="Negative Prompt", lines=2, value="low quality, blurry, distorted")
