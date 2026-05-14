@@ -28,9 +28,10 @@ CPU-friendly Hugging Face Space mit **stable-diffusion.cpp** als einzigem Backen
 ## ENV
 - `SDCPP_BIN` (Default: `/usr/local/bin/sd`)
 - `FLUX_GGUF_MODEL` (Default: `/app/models/flux-2-klein-4b-Q4_K_M.gguf`)
-- `FLUX_GGUF_REPO` (Default: `unsloth/FLUX.2-klein-4B-GGUF`)
-- `FLUX_GGUF_FILE` (Default: `flux-2-klein-4b-Q4_K_M.gguf`)
-- optional: `FLUX_CLIP_L`, `FLUX_T5XXL`, `FLUX_VAE`
+- `FLUX_LLM_MODEL` (Default: `/app/models/qwen_3_4b_q8_0.gguf`)
+- `FLUX_VAE_MODEL` (Default: `/app/models/flux2_ae.safetensors`)
+
+Diese 3 Dateien werden im Build vorab geladen und mit festen Dateinamen abgelegt, damit der Workflow stabil passt.
 
 ## Hinweise aus Doku
 - FLUX/SD.cpp nutzt oft `cfg-scale ~1.0` als guten Startpunkt.

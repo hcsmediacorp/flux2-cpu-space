@@ -9,33 +9,32 @@ from huggingface_hub import hf_hub_download
 
 SDCPP_BIN = os.getenv("SDCPP_BIN", "/usr/local/bin/sd")
 DIFFUSION_MODEL = os.getenv("FLUX_GGUF_MODEL", "/app/models/flux-2-klein-4b-Q4_K_M.gguf")
-MODEL_REPO = os.getenv("FLUX_GGUF_REPO", "unsloth/FLUX.2-klein-4B-GGUF")
-MODEL_FILE = os.getenv("FLUX_GGUF_FILE", "flux-2-klein-4b-Q4_K_M.gguf")
+LLM_MODEL = os.getenv("FLUX_LLM_MODEL", "/app/models/qwen_3_4b_q8_0.gguf")
+VAE_MODEL = os.getenv("FLUX_VAE_MODEL", "/app/models/flux2_ae.safetensors")
 OUT_DIR = Path(os.getenv("SDCPP_OUT_DIR", "/tmp/sdcpp-out"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-DEFAULTS = {
-    "sampling": "euler",
-    "steps": 8,
-    "cfg": 1.0,
-    "width": 1024,
-    "height": 1024,
-    "denoise": 0.55,
-}
+DEFAULTS = {"sampling": "euler", "steps": 4, "cfg": 1.0, "width": 1024, "height": 1024, "denoise": 0.55}
 
 
-def ensure_model() -> Path:
-    target = Path(DIFFUSION_MODEL)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists():
-        return target
-    downloaded = Path(hf_hub_download(repo_id=MODEL_REPO, filename=MODEL_FILE))
-    if not target.exists():
-        try:
-            target.symlink_to(downloaded)
-        except OSError:
-            target.write_bytes(downloaded.read_bytes())
-    return target
+def ensure_required_models() -> tuple[Path, Path, Path]:
+    diffusion = Path(DIFFUSION_MODEL)
+    llm = Path(LLM_MODEL)
+    vae = Path(VAE_MODEL)
+
+    diffusion.parent.mkdir(parents=True, exist_ok=True)
+
+    if not diffusion.exists():
+        src = Path(hf_hub_download(repo_id="unsloth/FLUX.2-klein-4B-GGUF", filename="flux-2-klein-4b-Q4_K_M.gguf"))
+        diffusion.symlink_to(src) if not diffusion.exists() else None
+    if not llm.exists():
+        src = Path(hf_hub_download(repo_id="unsloth/Qwen3-4B-GGUF", filename="Qwen3-4B-Q8_0.gguf"))
+        llm.symlink_to(src) if not llm.exists() else None
+    if not vae.exists():
+        src = Path(hf_hub_download(repo_id="black-forest-labs/FLUX.2-klein-4B", filename="vae/diffusion_pytorch_model.safetensors"))
+        vae.symlink_to(src) if not vae.exists() else None
+
+    return diffusion, llm, vae
 
 
 def run_generate(prompt: str, negative: str, reference_image: str | None, seed: int):
@@ -44,14 +43,16 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
     if not Path(SDCPP_BIN).exists():
         raise gr.Error(f"stable-diffusion.cpp Binary nicht gefunden: {SDCPP_BIN}")
 
-    model_path = ensure_model()
+    diffusion, llm, vae = ensure_required_models()
     final_seed = random.randint(0, 2**32 - 1) if seed == -1 else int(seed)
     out_file = OUT_DIR / f"flux2_{final_seed}.png"
 
     cmd = [
         SDCPP_BIN,
         "-M", "img2img" if reference_image else "txt2img",
-        "--diffusion-model", str(model_path),
+        "--diffusion-model", str(diffusion),
+        "--llm", str(llm),
+        "--vae", str(vae),
         "--prompt", prompt,
         "--negative-prompt", negative or "",
         "--sampling-method", DEFAULTS["sampling"],
@@ -61,6 +62,7 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
         "--height", str(DEFAULTS["height"]),
         "--seed", str(final_seed),
         "--output", str(out_file),
+        "--offload-to-cpu",
     ]
 
     if reference_image:
@@ -82,8 +84,8 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
 
 
 with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# FLUX.2 klein 4B (GGUF) • SD.cpp")
-    gr.Markdown("Einfacher Flow: Prompt + optional Referenzbild (img2img).")
+    gr.Markdown("# FLUX.2 klein 4B (GGUF) • SD.cpp CPU-only")
+    gr.Markdown("Einfacher Workflow: Prompt + optional Referenzbild (img2img). Alle benötigten Modelle sind vordefiniert.")
 
     status = gr.Markdown("🟡 Bereit")
     prompt = gr.Textbox(label="Prompt", lines=4, value="cinematic portrait, ultra detailed, soft light")
@@ -99,11 +101,7 @@ with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft
     used_seed = gr.Number(label="Used Seed", precision=0)
     cmdline = gr.Textbox(label="Ausgeführter sd.cpp Command", lines=3)
 
-    run.click(
-        run_generate,
-        inputs=[prompt, negative, reference, seed],
-        outputs=[image, used_seed, cmdline, status],
-    )
+    run.click(run_generate, inputs=[prompt, negative, reference, seed], outputs=[image, used_seed, cmdline, status])
 
 
 demo.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=7860)
