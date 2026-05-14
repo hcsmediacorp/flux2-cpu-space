@@ -6,19 +6,19 @@
     }
   },
   "2": {
-    "class_type": "CLIPLoaderGGUF",
+    "class_type": "CLIPLoader",
     "inputs": {
-      "clip_name": "Qwen3-4B-Q8_0.gguf",
+      "clip_name": "text_encoder",
       "type": "flux"
     }
-  }
-  "4": {
+  },
+  "3": {
     "class_type": "VAELoader",
     "inputs": {
       "vae_name": "ae.safetensors"
     }
   },
-  "5": {
+  "4": {
     "class_type": "EmptyLatentImage",
     "inputs": {
       "width": 1024,
@@ -26,27 +26,27 @@
       "batch_size": 1
     }
   },
-  "6": {
+  "5": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "clip": ["2", 0],
       "text": "cinematic portrait, ultra detailed, soft light"
     }
   },
-  "7": {
+  "6": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "clip": ["2", 0],
       "text": "low quality, blurry, distorted"
     }
   },
-  "3": {
+  "7": {
     "class_type": "KSampler",
     "inputs": {
       "model": ["1", 0],
-      "positive": ["6", 0],
-      "negative": ["7", 0],
-      "latent_image": ["5", 0],
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "latent_image": ["4", 0],
       "seed": 42,
       "steps": 4,
       "cfg": 1.0,
@@ -58,8 +58,8 @@
   "8": {
     "class_type": "VAEDecode",
     "inputs": {
-      "samples": ["3", 0],
-      "vae": ["4", 0]
+      "samples": ["7", 0],
+      "vae": ["3", 0]
     }
   },
   "9": {
@@ -69,17 +69,17 @@
       "images": ["8", 0]
     }
   },
-  "12": {
+  "10": {
     "class_type": "LoadImage",
     "inputs": {
       "image": "example.png"
     }
   },
-  "13": {
+  "11": {
     "class_type": "VAEEncode",
     "inputs": {
-      "pixels": ["12", 0],
-      "vae": ["4", 0]
+      "pixels": ["10", 0],
+      "vae": ["3", 0]
     }
   }
 }

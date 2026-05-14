@@ -29,29 +29,40 @@ def link_or_copy(source: str, target: Path) -> None:
 
 
 def ensure_models() -> None:
-    from huggingface_hub import hf_hub_download
+    from huggingface_hub import hf_hub_download, snapshot_download
 
-    downloads = [
-        (
-            "unsloth/FLUX.2-klein-4B-GGUF",
-            "flux-2-klein-4b-Q4_K_M.gguf",
-            [COMFY_DIR / "models/unet/flux-2-klein-4b-Q4_K_M.gguf", COMFY_DIR / "models/diffusion_models/flux-2-klein-4b-Q4_K_M.gguf"],
-        ),
-        (
-            "unsloth/Qwen3-4B-GGUF",
-            "Qwen3-4B-Q8_0.gguf",
-            [COMFY_DIR / "models/clip/Qwen3-4B-Q8_0.gguf", COMFY_DIR / "models/text_encoders/Qwen3-4B-Q8_0.gguf"],
-        ),
-        (
-            "black-forest-labs/FLUX.2-klein-4B",
-            "vae/diffusion_pytorch_model.safetensors",
-            [COMFY_DIR / "models/vae/ae.safetensors"],
-        ),
-    ]
-    for repo_id, filename, targets in downloads:
-        local_path = hf_hub_download(repo_id=repo_id, filename=filename)
-        for target in targets:
-            link_or_copy(local_path, target)
+    # 1) Quantized transformer GGUF
+    gguf_path = hf_hub_download(
+        repo_id="unsloth/FLUX.2-klein-4B-GGUF",
+        filename="flux-2-klein-4b-Q4_K_M.gguf",
+    )
+    for target in [
+        COMFY_DIR / "models/unet/flux-2-klein-4b-Q4_K_M.gguf",
+        COMFY_DIR / "models/diffusion_models/flux-2-klein-4b-Q4_K_M.gguf",
+    ]:
+        link_or_copy(gguf_path, target)
+
+    # 2) Original BFL text encoder, tokenizer, vae (required because Qwen3 is not a CLIP model)
+    bfl_path = Path(
+        snapshot_download(
+            repo_id="black-forest-labs/FLUX.2-klein-4B",
+            allow_patterns=["text_encoder/*", "tokenizer/*", "vae/*"],
+        )
+    )
+
+    # Link text encoder into ComfyUI clip folder
+    clip_target = COMFY_DIR / "models/clip/flux2-klein-text-encoder"
+    if not clip_target.exists():
+        clip_target.symlink_to(bfl_path / "text_encoder", target_is_directory=True)
+
+    # Link tokenizer
+    tokenizer_target = COMFY_DIR / "models/clip/flux2-klein-tokenizer"
+    if not tokenizer_target.exists():
+        tokenizer_target.symlink_to(bfl_path / "tokenizer", target_is_directory=True)
+
+    # Link VAE
+    vae_source = bfl_path / "vae/diffusion_pytorch_model.safetensors"
+    link_or_copy(str(vae_source), COMFY_DIR / "models/vae/ae.safetensors")
 
 
 def start_comfyui() -> subprocess.Popen:
@@ -100,8 +111,10 @@ def upload_image(image_path: str) -> str:
     body = []
     body.append(f"--{boundary}\r\n".encode())
     body.append(
-        f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'
-        b"Content-Type: image/png\r\n\r\n"
+        (
+            f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'
+            "Content-Type: image/png\r\n\r\n"
+        ).encode()
     )
     body.append(Path(image_path).read_bytes())
     body.append(f"\r\n--{boundary}--\r\n".encode())
@@ -127,6 +140,13 @@ def set_node_input(workflow: dict[str, Any], node_id: str, key: str, value: Any)
         workflow[node_id]["inputs"][key] = value
 
 
+def _find_first_node_id(workflow: dict[str, Any], class_type: str) -> str | None:
+    for node_id, node in workflow.items():
+        if isinstance(node, dict) and node.get("class_type") == class_type:
+            return node_id
+    return None
+
+
 def patch_workflow(
     workflow: dict[str, Any],
     prompt: str,
@@ -139,21 +159,37 @@ def patch_workflow(
     denoise: float,
     image_name: str | None,
 ) -> dict[str, Any]:
-    # Node IDs match comfyui_flux2_gguf_api_workflow.json. If ComfyUI-GGUF changes node names,
-    # users can still paste a corrected workflow into the advanced box and keep these IDs.
-    set_node_input(workflow, "6", "text", prompt)
-    set_node_input(workflow, "7", "text", negative_prompt or "")
-    set_node_input(workflow, "3", "seed", seed)
-    set_node_input(workflow, "3", "steps", steps)
-    set_node_input(workflow, "3", "cfg", cfg)
-    set_node_input(workflow, "3", "denoise", denoise)
-    set_node_input(workflow, "5", "width", width)
-    set_node_input(workflow, "5", "height", height)
-    if image_name:
-        set_node_input(workflow, "12", "image", image_name)
-        # Switch KSampler latent input to VAEEncode output for img2img.
-        if "3" in workflow:
-            workflow["3"]["inputs"]["latent_image"] = ["13", 0]
+    # Resolve nodes by class_type to avoid brittle hardcoded IDs.
+    ksampler_id = _find_first_node_id(workflow, "KSampler")
+    latent_id = _find_first_node_id(workflow, "EmptyLatentImage")
+    prompt_ids = [nid for nid, node in workflow.items() if isinstance(node, dict) and node.get("class_type") == "CLIPTextEncode"]
+    load_image_id = _find_first_node_id(workflow, "LoadImage")
+    vae_encode_id = _find_first_node_id(workflow, "VAEEncode")
+
+    if prompt_ids:
+        set_node_input(workflow, prompt_ids[0], "text", prompt)
+    if len(prompt_ids) > 1:
+        set_node_input(workflow, prompt_ids[1], "text", negative_prompt or "")
+
+    if ksampler_id:
+        set_node_input(workflow, ksampler_id, "seed", seed)
+        set_node_input(workflow, ksampler_id, "steps", steps)
+        set_node_input(workflow, ksampler_id, "cfg", cfg)
+        set_node_input(workflow, ksampler_id, "denoise", denoise)
+
+    if latent_id:
+        set_node_input(workflow, latent_id, "width", width)
+        set_node_input(workflow, latent_id, "height", height)
+
+    if image_name and load_image_id:
+        set_node_input(workflow, load_image_id, "image", image_name)
+        # Switch KSampler latent input to VAEEncode output for img2img when available.
+        if ksampler_id and vae_encode_id and "inputs" in workflow[ksampler_id]:
+            workflow[ksampler_id]["inputs"]["latent_image"] = [vae_encode_id, 0]
+    elif ksampler_id and latent_id and "inputs" in workflow[ksampler_id]:
+        # Reset to txt2img path
+        workflow[ksampler_id]["inputs"]["latent_image"] = [latent_id, 0]
+
     return workflow
 
 
