@@ -18,8 +18,45 @@ CLIENT_ID = str(uuid.uuid4())
 WORKFLOW_PATH = COMFY_DIR / "user/default/workflows/flux2_gguf_api_workflow.json"
 
 
+def link_or_copy(source: str, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() or target.is_symlink():
+        return
+    try:
+        target.symlink_to(source)
+    except OSError:
+        target.write_bytes(Path(source).read_bytes())
+
+
+def ensure_models() -> None:
+    from huggingface_hub import hf_hub_download
+
+    downloads = [
+        (
+            "unsloth/FLUX.2-klein-4B-GGUF",
+            "flux-2-klein-4b-Q4_K_M.gguf",
+            [COMFY_DIR / "models/unet/flux-2-klein-4b-Q4_K_M.gguf", COMFY_DIR / "models/diffusion_models/flux-2-klein-4b-Q4_K_M.gguf"],
+        ),
+        (
+            "unsloth/Qwen3-4B-GGUF",
+            "Qwen3-4B-Q8_0.gguf",
+            [COMFY_DIR / "models/clip/Qwen3-4B-Q8_0.gguf", COMFY_DIR / "models/text_encoders/Qwen3-4B-Q8_0.gguf"],
+        ),
+        (
+            "black-forest-labs/FLUX.2-klein-4B",
+            "vae/diffusion_pytorch_model.safetensors",
+            [COMFY_DIR / "models/vae/ae.safetensors"],
+        ),
+    ]
+    for repo_id, filename, targets in downloads:
+        local_path = hf_hub_download(repo_id=repo_id, filename=filename)
+        for target in targets:
+            link_or_copy(local_path, target)
+
+
 def start_comfyui() -> subprocess.Popen:
     COMFY_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_models()
     return subprocess.Popen(
         ["python", "main.py", "--listen", COMFY_HOST, "--port", str(COMFY_PORT), "--cpu"],
         cwd=str(COMFY_DIR),

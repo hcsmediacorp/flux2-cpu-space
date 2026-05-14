@@ -6,14 +6,12 @@
     }
   },
   "2": {
-    "class_type": "DualCLIPLoaderGGUF",
+    "class_type": "CLIPLoaderGGUF",
     "inputs": {
-      "clip_name1": "Qwen3-4B-Q8_0.gguf",
-      "clip_name2": "Qwen3-4B-Q8_0.gguf",
-      "type": "flux",
-      "device": "default"
+      "clip_name": "Qwen3-4B-Q8_0.gguf",
+      "type": "flux"
     }
-  },
+  }
   "4": {
     "class_type": "VAELoader",
     "inputs": {
