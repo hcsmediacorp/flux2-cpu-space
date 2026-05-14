@@ -1,13 +1,19 @@
 import gradio as gr
 import torch
+from huggingface_hub import hf_hub_download
 from diffusers import Flux2KleinPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
 
 
 device = "cpu"
 dtype = torch.bfloat16
 
+GGUF_PATH = hf_hub_download(
+    repo_id="unsloth/FLUX.2-klein-4B-GGUF",
+    filename="flux-2-klein-4b-Q6_K.gguf",
+)
+
 transformer = FluxTransformer2DModel.from_single_file(
-    "https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q6_K.gguf",
+    GGUF_PATH,
     quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
     torch_dtype=dtype,
 )
