@@ -14,6 +14,8 @@ GGUF_PATH = hf_hub_download(
 
 transformer = FluxTransformer2DModel.from_single_file(
     GGUF_PATH,
+    config="black-forest-labs/FLUX.2-klein-4B",
+    subfolder="transformer",
     quantization_config=GGUFQuantizationConfig(compute_dtype=dtype),
     torch_dtype=dtype,
 )
