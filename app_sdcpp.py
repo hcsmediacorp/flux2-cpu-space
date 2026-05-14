@@ -48,9 +48,14 @@ def run_generate(prompt: str, negative: str, seed_mode: str, seed: int, steps: i
     if VAE:
         cmd += ["--vae", VAE]
 
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    except subprocess.TimeoutExpired as exc:
+        raise gr.Error("sd.cpp Timeout nach 15 Minuten. Bitte Steps/Auflösung reduzieren.") from exc
+
     if proc.returncode != 0:
-        raise gr.Error("sd.cpp Fehler:\n" + (proc.stderr or proc.stdout)[-5000:])
+        details = (proc.stderr or proc.stdout or "Unbekannter Fehler")[-5000:]
+        raise gr.Error("sd.cpp Fehler:\n" + details)
     if not out_file.exists():
         raise gr.Error("Kein Output-Bild erzeugt.")
 
