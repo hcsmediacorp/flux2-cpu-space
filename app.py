@@ -7,8 +7,9 @@ device = "cpu"
 dtype = torch.bfloat16
 
 pipe = Flux2KleinPipeline.from_pretrained(
-    "unsloth/FLUX.2-klein-4B-GGUF",
+    "black-forest-labs/FLUX.2-klein-4B",
     gguf_file="flux-2-klein-4b-Q6_K.gguf",
+    gguf_repo_id="unsloth/FLUX.2-klein-4B-GGUF",
     torch_dtype=dtype,
 )
 pipe.enable_model_cpu_offload()
