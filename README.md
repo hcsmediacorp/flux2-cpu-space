@@ -15,8 +15,8 @@ CPU-friendly Hugging Face Space mit **stable-diffusion.cpp** als einzigem Backen
 ## Unterstützt
 - txt2img
 - img2img (Referenzbild + Strength)
-- Presets: Fast / Balanced / Quality
-- Seed-Reproduzierbarkeit (Random/Fixed)
+- Minimal-UI: Prompt + optional img2img Referenzbild
+- Seed in Advanced (default random)
 - Auto-Download des GGUF-Modells
 
 ## Standard-Workflow
