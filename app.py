@@ -1,6 +1,7 @@
 import gradio as gr
 import torch
 from huggingface_hub import hf_hub_download
+from transformers import AutoModelForCausalLM, AutoTokenizer, GGUFQuantizationConfig as TGGUFQuantizationConfig
 from diffusers import Flux2KleinPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
 
 
@@ -20,9 +21,19 @@ transformer = FluxTransformer2DModel.from_single_file(
     torch_dtype=dtype,
 )
 
+text_encoder_2 = AutoModelForCausalLM.from_pretrained(
+    "unsloth/Qwen3-4B-GGUF",
+    gguf_file="Qwen3-4B-Q8_0.gguf",
+    quantization_config=TGGUFQuantizationConfig(compute_dtype=dtype),
+    torch_dtype=dtype,
+)
+tokenizer_2 = AutoTokenizer.from_pretrained("Qwen/Qwen3-4B")
+
 pipe = Flux2KleinPipeline.from_pretrained(
     "black-forest-labs/FLUX.2-klein-4B",
     transformer=transformer,
+    text_encoder_2=text_encoder_2,
+    tokenizer_2=tokenizer_2,
     torch_dtype=dtype,
 )
 pipe.enable_model_cpu_offload()
