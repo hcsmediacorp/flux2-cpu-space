@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-RUN git clone --depth 1 https://github.com/leejet/stable-diffusion.cpp.git /app/stable-diffusion.cpp
+RUN git clone --depth 1 --recursive https://github.com/leejet/stable-diffusion.cpp.git /app/stable-diffusion.cpp \
+    && cd /app/stable-diffusion.cpp && git submodule update --init --recursive
 
 WORKDIR /app/stable-diffusion.cpp
 RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
