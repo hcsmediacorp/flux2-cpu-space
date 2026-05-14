@@ -16,7 +16,7 @@ RUN git clone --depth 1 --recursive https://github.com/leejet/stable-diffusion.c
 
 WORKDIR /app/stable-diffusion.cpp
 RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
-    && cmake --build build -j"$(nproc)"
+    && cmake --build build --target sd -j1
 
 WORKDIR /app
 RUN pip install --upgrade pip \
