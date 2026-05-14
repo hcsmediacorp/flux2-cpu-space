@@ -12,7 +12,7 @@ Für GGUF-Dateien ist `stable-diffusion.cpp` (auf `ggml`) ein direkter und robus
 ## Neue App
 - `app_sdcpp.py` nutzt `sd` CLI statt ComfyUI API.
 - Erwartete ENV Variablen:
-  - `SDCPP_BIN` (z. B. `/app/stable-diffusion.cpp/bin/sd`)
+  - `SDCPP_BIN` (z. B. `/app/stable-diffusion.cpp/build/bin/sd`)
   - `FLUX_GGUF_MODEL` (Pfad zur FLUX.2 Klein GGUF Datei)
   - optional: `FLUX_CLIP_L`, `FLUX_T5XXL`, `FLUX_VAE`
 
