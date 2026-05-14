@@ -5,54 +5,45 @@ import subprocess
 from pathlib import Path
 
 import gradio as gr
-from huggingface_hub import hf_hub_download
 
 SDCPP_BIN = os.getenv("SDCPP_BIN", "/usr/local/bin/sd")
-DIFFUSION_MODEL = os.getenv("FLUX_GGUF_MODEL", "/app/models/flux-2-klein-4b-Q4_K_M.gguf")
-LLM_MODEL = os.getenv("FLUX_LLM_MODEL", "/app/models/qwen_3_4b_q8_0.gguf")
-VAE_MODEL = os.getenv("FLUX_VAE_MODEL", "/app/models/flux2_ae.safetensors")
+DIFFUSION_MODEL = Path(os.getenv("FLUX_GGUF_MODEL", "/app/models/flux-2-klein-4b-Q4_K_M.gguf"))
+LLM_MODEL = Path(os.getenv("FLUX_LLM_MODEL", "/app/models/qwen_3_4b_q8_0.gguf"))
+VAE_MODEL = Path(os.getenv("FLUX_VAE_MODEL", "/app/models/flux2_ae.safetensors"))
 OUT_DIR = Path(os.getenv("SDCPP_OUT_DIR", "/tmp/sdcpp-out"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULTS = {"sampling": "euler", "steps": 4, "cfg": 1.0, "width": 1024, "height": 1024, "denoise": 0.55}
 
 
-def ensure_required_models() -> tuple[Path, Path, Path]:
-    diffusion = Path(DIFFUSION_MODEL)
-    llm = Path(LLM_MODEL)
-    vae = Path(VAE_MODEL)
-
-    diffusion.parent.mkdir(parents=True, exist_ok=True)
-
-    if not diffusion.exists():
-        src = Path(hf_hub_download(repo_id="unsloth/FLUX.2-klein-4B-GGUF", filename="flux-2-klein-4b-Q4_K_M.gguf"))
-        diffusion.symlink_to(src) if not diffusion.exists() else None
-    if not llm.exists():
-        src = Path(hf_hub_download(repo_id="unsloth/Qwen3-4B-GGUF", filename="Qwen3-4B-Q8_0.gguf"))
-        llm.symlink_to(src) if not llm.exists() else None
-    if not vae.exists():
-        src = Path(hf_hub_download(repo_id="black-forest-labs/FLUX.2-klein-4B", filename="vae/diffusion_pytorch_model.safetensors"))
-        vae.symlink_to(src) if not vae.exists() else None
-
-    return diffusion, llm, vae
+def validate_runtime_assets() -> None:
+    missing = []
+    if not Path(SDCPP_BIN).exists():
+        missing.append(f"sd binary: {SDCPP_BIN}")
+    if not DIFFUSION_MODEL.exists():
+        missing.append(f"diffusion model: {DIFFUSION_MODEL}")
+    if not LLM_MODEL.exists():
+        missing.append(f"llm/text encoder: {LLM_MODEL}")
+    if not VAE_MODEL.exists():
+        missing.append(f"vae: {VAE_MODEL}")
+    if missing:
+        raise gr.Error("Fehlende Build-Artefakte:\n- " + "\n- ".join(missing))
 
 
 def run_generate(prompt: str, negative: str, reference_image: str | None, seed: int):
     if not prompt.strip():
         raise gr.Error("Bitte Prompt eingeben.")
-    if not Path(SDCPP_BIN).exists():
-        raise gr.Error(f"stable-diffusion.cpp Binary nicht gefunden: {SDCPP_BIN}")
 
-    diffusion, llm, vae = ensure_required_models()
+    validate_runtime_assets()
     final_seed = random.randint(0, 2**32 - 1) if seed == -1 else int(seed)
     out_file = OUT_DIR / f"flux2_{final_seed}.png"
 
     cmd = [
         SDCPP_BIN,
         "-M", "img2img" if reference_image else "txt2img",
-        "--diffusion-model", str(diffusion),
-        "--llm", str(llm),
-        "--vae", str(vae),
+        "--diffusion-model", str(DIFFUSION_MODEL),
+        "--llm", str(LLM_MODEL),
+        "--vae", str(VAE_MODEL),
         "--prompt", prompt,
         "--negative-prompt", negative or "",
         "--sampling-method", DEFAULTS["sampling"],
@@ -85,7 +76,7 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
 
 with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft()) as demo:
     gr.Markdown("# FLUX.2 klein 4B (GGUF) • SD.cpp CPU-only")
-    gr.Markdown("Einfacher Workflow: Prompt + optional Referenzbild (img2img). Alle benötigten Modelle sind vordefiniert.")
+    gr.Markdown("Einfacher Workflow: Prompt + optional Referenzbild (img2img).")
 
     status = gr.Markdown("🟡 Bereit")
     prompt = gr.Textbox(label="Prompt", lines=4, value="cinematic portrait, ultra detailed, soft light")

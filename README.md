@@ -33,6 +33,11 @@ CPU-friendly Hugging Face Space mit **stable-diffusion.cpp** als einzigem Backen
 
 Diese 3 Dateien werden im Build vorab geladen und mit festen Dateinamen abgelegt, damit der Workflow stabil passt.
 
+Hinweis zur Quantisierung:
+- Diffusion: GGUF quantisiert (Q4_K_M)
+- Text-Encoder/LLM: GGUF quantisiert (Q8_0)
+- VAE: nur Safetensors (kein etabliertes GGUF-Äquivalent für diesen Pfad)
+
 ## Hinweise aus Doku
 - FLUX/SD.cpp nutzt oft `cfg-scale ~1.0` als guten Startpunkt.
 - Für höhere Qualität: mehr Steps + größere Auflösung.
