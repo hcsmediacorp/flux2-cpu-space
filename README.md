@@ -1,6 +1,6 @@
 ---
-title: Flux2 GGUF ComfyUI CPU
-emoji: 🧩
+title: Flux2 GGUF (stable-diffusion.cpp)
+emoji: ⚡
 colorFrom: indigo
 colorTo: purple
 sdk: docker
@@ -8,29 +8,23 @@ pinned: false
 app_port: 7860
 ---
 
-# Flux2 GGUF Space
+# FLUX.2 klein 4B GGUF
 
-Dieses Projekt unterstützt jetzt zwei Backends:
-1) **ComfyUI + ComfyUI-GGUF** (bestehend)  
-2) **stable-diffusion.cpp (ggml/GGUF)** als primärer Inferenzpfad für GGUF-Dateien.
+Primäres Backend ist jetzt **stable-diffusion.cpp (ggml/GGUF)**.
 
-## Included
+## Features
+- Direkte GGUF-Inferenz via `sd` CLI
+- Gradio UI mit Seed/Sampler/Steps/CFG/Resolution
+- Reproduzierbare Runs (Fixed Seed)
+- Docker-Start standardmäßig über `app_sdcpp.py`
 
-- ComfyUI web UI on port `7860`
-- ComfyUI-GGUF custom node
-- FLUX.2 klein GGUF download at startup:
-  - `unsloth/FLUX.2-klein-4B-GGUF/flux-2-klein-4b-Q4_K_M.gguf`
-- Quantized text encoder download at startup:
-  - `unsloth/Qwen3-4B-GGUF/Qwen3-4B-Q8_0.gguf`
-- Workflow notes: `comfyui_flux2_gguf_workflow.json`
+## Wichtig
+- Modellpfad per ENV: `FLUX_GGUF_MODEL`
+- Binary per ENV: `SDCPP_BIN` (Default: `/app/stable-diffusion.cpp/build/bin/sd`)
+- Optional: `FLUX_CLIP_L`, `FLUX_T5XXL`, `FLUX_VAE`
 
-## Usage
-
-1. Open the live Space.
-2. In ComfyUI, build/load a FLUX GGUF graph using the GGUF UNet loader.
-3. Use KSampler seed controls for deterministic outputs.
-4. For image-to-image: `Load Image → VAE Encode → KSampler latent_image`, then set denoise around `0.35–0.75`.
-
-## Notes
-
-FLUX.2 GGUF support is cutting-edge. If a specific ComfyUI node name differs after updates, select the downloaded files manually from `models/unet` and `models/clip`.
+## Lokaler Check
+```bash
+uv run python -m py_compile app_sdcpp.py
+uv run --with pytest pytest -q
+```

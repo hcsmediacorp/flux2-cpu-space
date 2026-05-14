@@ -31,7 +31,6 @@ RUN cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
 COPY app.py /app/app.py
 COPY app_sdcpp.py /app/app_sdcpp.py
 COPY comfyui_start.sh /app/comfyui_start.sh
-COPY comfyui_flux2_gguf_workflow.json /app/ComfyUI/user/default/workflows/flux2_gguf_img2img_seed_workflow.json
 COPY comfyui_flux2_gguf_api_workflow.json /app/ComfyUI/user/default/workflows/flux2_gguf_api_workflow.json
 RUN chmod +x /app/comfyui_start.sh
 
