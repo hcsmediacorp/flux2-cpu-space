@@ -38,6 +38,13 @@ Hinweis zur Quantisierung:
 - Text-Encoder/LLM: GGUF quantisiert (Q8_0)
 - VAE: nur Safetensors (kein etabliertes GGUF-Äquivalent für diesen Pfad)
 
+## Hugging Face CPU Space Anpassungen
+Orientiert an den HF-CPU-Basisgrenzen aus der Doku (typisch: 2 vCPU, 16 GB RAM, 50 GB ephemerer Disk):
+- Konservative Defaults: `768x768`, `3` Steps, `cfg=1.0`
+- Queue auf `concurrency=1` (keine parallelen Runs)
+- `sd` Binary wird im Build architekturabhängig geladen + ELF-validiert
+- Laufzeitcheck für Binary-Format mit klarer Fehlermeldung (statt kryptischem `Exec format error`)
+
 ## Hinweise aus Doku
 - FLUX/SD.cpp nutzt oft `cfg-scale ~1.0` als guten Startpunkt.
 - Für höhere Qualität: mehr Steps + größere Auflösung.

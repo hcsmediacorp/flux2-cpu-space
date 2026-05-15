@@ -1,6 +1,7 @@
 import os
 import random
 import shlex
+import stat
 import subprocess
 from pathlib import Path
 
@@ -13,13 +14,25 @@ VAE_MODEL = Path(os.getenv("FLUX_VAE_MODEL", "/app/models/flux2_ae.safetensors")
 OUT_DIR = Path(os.getenv("SDCPP_OUT_DIR", "/tmp/sdcpp-out"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-DEFAULTS = {"sampling": "euler", "steps": 4, "cfg": 1.0, "width": 1024, "height": 1024, "denoise": 0.55}
+# HF Spaces CPU basic defaults: 2 vCPU / 16 GB RAM => conservative generation settings
+DEFAULTS = {"sampling": "euler", "steps": 3, "cfg": 1.0, "width": 768, "height": 768, "denoise": 0.55}
 
 
 def resolve_sd_bin() -> Path:
     candidates = [Path(SDCPP_BIN), Path("/usr/local/bin/sd-cli"), Path("/usr/local/bin/sd")]
     for c in candidates:
         if c.exists():
+            mode = c.stat().st_mode
+            if not (mode & stat.S_IXUSR):
+                raise gr.Error(f"sd.cpp Binary ist nicht ausführbar: {c}")
+            # Quick ELF sanity-check to surface Exec format issues with clear message
+            with c.open("rb") as fh:
+                magic = fh.read(4)
+            if magic != b"\x7fELF":
+                raise gr.Error(
+                    f"Ungültiges sd.cpp Binary-Format ({c}). Erwartet ELF, bekam magic={magic!r}. "
+                    "Vermutlich falsche Architektur oder fehlerhafter Download im Docker-Build."
+                )
             return c
     raise gr.Error("sd.cpp Binary nicht gefunden (erwartet z.B. /usr/local/bin/sd-cli)")
 
@@ -37,7 +50,7 @@ def validate_runtime_assets() -> None:
 
 
 def _run_cmd(cmd: list[str]) -> tuple[int, str]:
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     return proc.returncode, (proc.stderr or proc.stdout or "")
 
 
@@ -102,13 +115,13 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
         if rc != 0 or not out_file.exists():
             raise gr.Error("sd.cpp Fehler:\n" + log[-6000:])
     except subprocess.TimeoutExpired as exc:
-        raise gr.Error("sd.cpp Timeout nach 15 Minuten. Bitte später erneut versuchen.") from exc
+        raise gr.Error("sd.cpp Timeout nach 10 Minuten (CPU Space Limit). Bitte niedrigere Auflösung/Steps versuchen.") from exc
 
     mode = "img2img" if reference_image else "txt2img"
     return str(out_file), final_seed, " ".join(shlex.quote(c) for c in used), f"✅ Fertig ({mode})"
 
 
-with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp") as demo:
     gr.Markdown("# FLUX.2 klein 4B (GGUF) • SD.cpp CPU-only")
     status = gr.Markdown("🟡 Bereit")
     prompt = gr.Textbox(label="Prompt", lines=4, value="cinematic portrait, ultra detailed, soft light")
@@ -127,4 +140,4 @@ with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp", theme=gr.themes.Soft
     run.click(run_generate, inputs=[prompt, negative, reference, seed], outputs=[image, used_seed, cmdline, status])
 
 
-demo.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=7860)
+demo.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=7860, theme=gr.themes.Soft())
