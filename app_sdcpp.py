@@ -15,7 +15,12 @@ OUT_DIR = Path(os.getenv("SDCPP_OUT_DIR", "/tmp/sdcpp-out"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # HF Spaces CPU basic defaults: 2 vCPU / 16 GB RAM => conservative generation settings
-DEFAULTS = {"sampling": "euler", "steps": 3, "cfg": 1.0, "width": 768, "height": 768, "denoise": 0.55}
+PRESETS = {
+    "Fast (CPU)": {"sampling": "euler", "steps": 2, "cfg": 1.0, "width": 640, "height": 640, "denoise": 0.5},
+    "Balanced (CPU)": {"sampling": "euler", "steps": 3, "cfg": 1.0, "width": 768, "height": 768, "denoise": 0.55},
+    "Quality (CPU)": {"sampling": "euler", "steps": 5, "cfg": 1.0, "width": 896, "height": 896, "denoise": 0.6},
+}
+DEFAULT_PRESET = "Balanced (CPU)"
 
 
 def resolve_sd_bin() -> Path:
@@ -54,7 +59,7 @@ def _run_cmd(cmd: list[str]) -> tuple[int, str]:
     return proc.returncode, (proc.stderr or proc.stdout or "")
 
 
-def run_generate(prompt: str, negative: str, reference_image: str | None, seed: int):
+def run_generate(prompt: str, negative: str, reference_image: str | None, seed: int, preset_name: str):
     if not prompt.strip():
         raise gr.Error("Bitte Prompt eingeben.")
 
@@ -62,6 +67,7 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
     validate_runtime_assets()
     final_seed = random.randint(0, 2**32 - 1) if seed == -1 else int(seed)
     out_file = OUT_DIR / f"flux2_{final_seed}.png"
+    selected = PRESETS.get(preset_name, PRESETS[DEFAULT_PRESET])
 
     # Primary syntax
     cmd_a = [
@@ -72,17 +78,17 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
         "--vae", str(VAE_MODEL),
         "--prompt", prompt,
         "--negative-prompt", negative or "",
-        "--sampling-method", DEFAULTS["sampling"],
-        "--steps", str(DEFAULTS["steps"]),
-        "--cfg-scale", str(DEFAULTS["cfg"]),
-        "--width", str(DEFAULTS["width"]),
-        "--height", str(DEFAULTS["height"]),
+        "--sampling-method", selected["sampling"],
+        "--steps", str(selected["steps"]),
+        "--cfg-scale", str(selected["cfg"]),
+        "--width", str(selected["width"]),
+        "--height", str(selected["height"]),
         "--seed", str(final_seed),
         "--output", str(out_file),
         "--offload-to-cpu",
     ]
     if reference_image:
-        cmd_a += ["--init-img", reference_image, "--strength", str(DEFAULTS["denoise"])]
+        cmd_a += ["--init-img", reference_image, "--strength", str(selected["denoise"])]
 
     # Fallback syntax seen in sd.cpp docs
     cmd_b = [
@@ -93,17 +99,17 @@ def run_generate(prompt: str, negative: str, reference_image: str | None, seed: 
         "--vae", str(VAE_MODEL),
         "-p", prompt,
         "-n", negative or "",
-        "--sampling-method", DEFAULTS["sampling"],
-        "--steps", str(DEFAULTS["steps"]),
-        "--cfg-scale", str(DEFAULTS["cfg"]),
-        "--width", str(DEFAULTS["width"]),
-        "--height", str(DEFAULTS["height"]),
+        "--sampling-method", selected["sampling"],
+        "--steps", str(selected["steps"]),
+        "--cfg-scale", str(selected["cfg"]),
+        "--width", str(selected["width"]),
+        "--height", str(selected["height"]),
         "--seed", str(final_seed),
         "-o", str(out_file),
         "--offload-to-cpu",
     ]
     if reference_image:
-        cmd_b += ["-r", reference_image, "--strength", str(DEFAULTS["denoise"])]
+        cmd_b += ["-r", reference_image, "--strength", str(selected["denoise"])]
 
     try:
         rc, log = _run_cmd(cmd_a)
@@ -127,6 +133,11 @@ with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp") as demo:
     prompt = gr.Textbox(label="Prompt", lines=4, value="cinematic portrait, ultra detailed, soft light")
     negative = gr.Textbox(label="Negative Prompt", lines=2, value="low quality, blurry, distorted")
     reference = gr.Image(label="Referenzbild (optional für img2img)", type="filepath")
+    preset = gr.Dropdown(
+        label="Preset",
+        choices=list(PRESETS.keys()),
+        value=DEFAULT_PRESET,
+    )
 
     with gr.Accordion("Advanced", open=False):
         gr.Markdown("Seed: -1 = Random")
@@ -137,7 +148,7 @@ with gr.Blocks(title="Flux2 GGUF via stable-diffusion.cpp") as demo:
     used_seed = gr.Number(label="Used Seed", precision=0)
     cmdline = gr.Textbox(label="Ausgeführter sd.cpp Command", lines=3)
 
-    run.click(run_generate, inputs=[prompt, negative, reference, seed], outputs=[image, used_seed, cmdline, status])
+    run.click(run_generate, inputs=[prompt, negative, reference, seed, preset], outputs=[image, used_seed, cmdline, status])
 
 
 demo.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=7860, theme=gr.themes.Soft())
