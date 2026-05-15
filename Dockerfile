@@ -12,8 +12,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Prebuilt sd binary (CPU-friendly for HF Spaces)
-ARG SDCPP_URL=https://github.com/leejet/stable-diffusion.cpp/releases/latest/download/sd-linux-x64
-RUN curl -L "$SDCPP_URL" -o /usr/local/bin/sd && chmod +x /usr/local/bin/sd
+ARG SDCPP_URL_BASE=https://github.com/leejet/stable-diffusion.cpp/releases/latest/download
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64) sd_artifact="sd-linux-x64" ;; \
+      aarch64|arm64) sd_artifact="sd-linux-arm64" ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fL "$SDCPP_URL_BASE/$sd_artifact" -o /usr/local/bin/sd; \
+    chmod +x /usr/local/bin/sd; \
+    python - <<'PY'
+from pathlib import Path
+p = Path('/usr/local/bin/sd')
+b = p.read_bytes()[:4]
+if b != b'\x7fELF':
+    raise SystemExit(f"/usr/local/bin/sd is not an ELF binary (magic={b!r})")
+PY
 
 WORKDIR /app
 RUN pip install --upgrade pip && pip install gradio pillow numpy huggingface_hub
