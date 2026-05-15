@@ -9,26 +9,20 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates libgl1 libglib2.0-0 \
+    git cmake build-essential pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Prebuilt sd binary (CPU-friendly for HF Spaces)
-ARG SDCPP_URL_BASE=https://github.com/leejet/stable-diffusion.cpp/releases/latest/download
+# Build sd.cpp from source (release artifacts names can change and 404)
 RUN set -eux; \
-    arch="$(uname -m)"; \
-    case "$arch" in \
-      x86_64) sd_artifact="sd-linux-x64" ;; \
-      aarch64|arm64) sd_artifact="sd-linux-arm64" ;; \
-      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
-    esac; \
-    curl -fL "$SDCPP_URL_BASE/$sd_artifact" -o /usr/local/bin/sd; \
+    git clone --depth=1 https://github.com/leejet/stable-diffusion.cpp.git /tmp/stable-diffusion.cpp; \
+    cmake -S /tmp/stable-diffusion.cpp -B /tmp/stable-diffusion.cpp/build -DCMAKE_BUILD_TYPE=Release; \
+    cmake --build /tmp/stable-diffusion.cpp/build -j"$(nproc)"; \
+    if [ -f /tmp/stable-diffusion.cpp/build/bin/sd ]; then cp /tmp/stable-diffusion.cpp/build/bin/sd /usr/local/bin/sd; \
+    elif [ -f /tmp/stable-diffusion.cpp/build/bin/sd-cli ]; then cp /tmp/stable-diffusion.cpp/build/bin/sd-cli /usr/local/bin/sd; \
+    else echo "sd binary not found after build" >&2; ls -R /tmp/stable-diffusion.cpp/build; exit 1; fi; \
     chmod +x /usr/local/bin/sd; \
-    python - <<'PY'
-from pathlib import Path
-p = Path('/usr/local/bin/sd')
-b = p.read_bytes()[:4]
-if b != b'\x7fELF':
-    raise SystemExit(f"/usr/local/bin/sd is not an ELF binary (magic={b!r})")
-PY
+    /usr/local/bin/sd --help >/dev/null || true; \
+    rm -rf /tmp/stable-diffusion.cpp
 
 WORKDIR /app
 RUN pip install --upgrade pip && pip install gradio pillow numpy huggingface_hub
